@@ -1,0 +1,27 @@
+<resources>
+    <string name="app_name">FolksWire</string>
+    <string name="nav_feed">Wire</string>
+    <string name="nav_saved">Saved</string>
+    <string name="nav_sources">Sources</string>
+    <string name="masthead_title">FOLKS // WIRE</string>
+    <string name="masthead_subtitle">HASHTAGFOLKS &amp; WIRED NEWS</string>
+    <string name="search_hint">Search headlines, authors, #hashtags…</string>
+    <string name="action_refresh">Refresh feeds</string>
+    <string name="action_search">Search articles</string>
+    <string name="action_close_search">Close search</string>
+    <string name="action_bookmark">Save article</string>
+    <string name="action_unbookmark">Remove bookmark</string>
+    <string name="action_share">Share article</string>
+    <string name="action_back">Navigate back</string>
+    <string name="action_open_browser">Open in browser</string>
+    <string name="action_toggle_webview">Web view</string>
+    <string name="action_toggle_reader">Reader view</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_configure_url">Edit URL</string>
+    <string name="empty_saved_title">Your reading desk is clear</string>
+    <string name="empty_saved_body">Tap the bookmark icon on any HashtagFolks or WIRED story to keep it here for offline reading.</string>
+    <string name="empty_feed_title">No stories match this filter</string>
+    <string name="empty_feed_body">Try clearing your search or hashtag filter, or pull down to sync the latest wire.</string>
+    <string name="add_feed_title">Wire a New Feed</string>
+    <string name="edit_feed_title">Configure Feed URL</string>
+</resources>

@@ -1,0 +1,6 @@
+{
+  "name": "FolksWire",
+  "description": "Real-time RSS and web news reader combining hashtagfolks.com and WIRED News feeds with offline reading, hashtag discovery, and custom feed wiring.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

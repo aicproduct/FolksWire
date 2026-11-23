@@ -58,28 +58,48 @@ import com.example.data.local.ReaderFontScale
 import com.example.data.local.ThemeMode
 import com.example.data.local.UserPreferences
 import com.example.data.model.FeedSource
+import com.example.data.model.SponsoredAd
+import com.example.ui.components.EditAdUrlDialog
 import com.example.ui.components.EditSourceUrlDialog
 import com.example.ui.components.ProviderBadge
 import com.example.ui.theme.StatusSuccess
 import com.example.ui.theme.StatusWarning
 import com.example.ui.util.TimeFormatters
+import com.example.ui.viewmodel.AdImportStatus
 
 @Composable
 fun SourcesScreen(
     sources: List<FeedSource>,
+    importedAds: List<SponsoredAd>,
+    adImportStatus: AdImportStatus,
     preferences: UserPreferences,
     onToggleSource: (String, Boolean) -> Unit,
     onRefreshSource: (String) -> Unit,
     onUpdateSourceUrl: (String, String) -> Unit,
     onAddCustomSource: (String, String, String) -> Unit,
     onDeleteCustomSource: (String) -> Unit,
+    onToggleAdsEnabled: (Boolean) -> Unit,
+    onRefreshAds: () -> Unit,
+    onUpdateAdFeedUrl: (String) -> Unit,
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetFontScale: (ReaderFontScale) -> Unit,
     onClearCache: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
+    var showEditAdDialog by remember { mutableStateOf(false) }
     var editingSource by remember { mutableStateOf<FeedSource?>(null) }
+
+    if (showEditAdDialog) {
+        EditAdUrlDialog(
+            currentUrl = preferences.adFeedUrl,
+            onDismiss = { showEditAdDialog = false },
+            onConfirm = { newUrl ->
+                onUpdateAdFeedUrl(newUrl)
+                showEditAdDialog = false
+            }
+        )
+    }
 
     if (showAddDialog) {
         AddCustomFeedDialog(
@@ -159,6 +179,18 @@ fun SourcesScreen(
                         } else {
                             null
                         }
+                    )
+                }
+
+                item(key = "ad_slot_config") {
+                    AdSlotConfigCard(
+                        adsEnabled = preferences.adsEnabled,
+                        adFeedUrl = preferences.adFeedUrl,
+                        importedCount = importedAds.size,
+                        adImportStatus = adImportStatus,
+                        onToggleAds = onToggleAdsEnabled,
+                        onRefreshAds = onRefreshAds,
+                        onEditAdUrl = { showEditAdDialog = true }
                     )
                 }
 
@@ -448,4 +480,89 @@ private fun AddCustomFeedDialog(
             }
         }
     )
+}
+
+@Composable
+private fun AdSlotConfigCard(
+    adsEnabled: Boolean,
+    adFeedUrl: String,
+    importedCount: Int,
+    adImportStatus: AdImportStatus,
+    onToggleAds: (Boolean) -> Unit,
+    onRefreshAds: () -> Unit,
+    onEditAdUrl: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.45f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("ad_slot_config_card")
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "HASHTAGFOLKS.COM AD SLOTS",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (adsEnabled) "$importedCount sponsored ad(s) cached" else "Ad slots paused",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = adsEnabled,
+                    onCheckedChange = onToggleAds,
+                    modifier = Modifier.testTag("ads_enabled_switch")
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = adFeedUrl,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            if (!adImportStatus.lastError.isNullOrBlank() && adsEnabled) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = adImportStatus.lastError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onRefreshAds,
+                    enabled = adsEnabled && !adImportStatus.isImporting,
+                    modifier = Modifier.testTag("sources_refresh_ads_button")
+                ) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (adImportStatus.isImporting) "Importing…" else "Import Ads")
+                }
+                OutlinedButton(
+                    onClick = onEditAdUrl,
+                    modifier = Modifier.testTag("sources_edit_ad_url_button")
+                ) {
+                    Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Edit Ad URL")
+                }
+            }
+        }
+    }
 }

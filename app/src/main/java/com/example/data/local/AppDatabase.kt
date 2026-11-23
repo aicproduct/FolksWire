@@ -6,10 +6,11 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.data.model.FeedSource
 import com.example.data.model.NewsArticle
+import com.example.data.model.SponsoredAd
 
 @Database(
-    entities = [NewsArticle::class, FeedSource::class],
-    version = 2,
+    entities = [NewsArticle::class, FeedSource::class, SponsoredAd::class],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

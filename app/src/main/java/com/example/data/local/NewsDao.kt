@@ -4,8 +4,10 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import com.example.data.model.FeedSource
 import com.example.data.model.NewsArticle
+import com.example.data.model.SponsoredAd
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -88,4 +90,21 @@ interface NewsDao {
 
     @Query("UPDATE feed_sources SET url = :url, lastStatusOk = 1, lastError = NULL WHERE id = :id")
     suspend fun updateSourceUrl(id: String, url: String)
+
+    @Query("SELECT * FROM sponsored_ads ORDER BY slotPositionHint ASC, fetchedAt DESC")
+    fun observeSponsoredAds(): Flow<List<SponsoredAd>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSponsoredAds(ads: List<SponsoredAd>)
+
+    @Query("DELETE FROM sponsored_ads")
+    suspend fun clearSponsoredAds()
+
+    @Transaction
+    suspend fun replaceSponsoredAds(ads: List<SponsoredAd>) {
+        clearSponsoredAds()
+        if (ads.isNotEmpty()) {
+            upsertSponsoredAds(ads)
+        }
+    }
 }

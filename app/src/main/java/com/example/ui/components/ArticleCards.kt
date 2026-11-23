@@ -20,15 +20,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,7 +65,9 @@ import com.example.R
 import com.example.data.model.FeedSource
 import com.example.data.model.NewsArticle
 import com.example.data.model.ProviderGroup
+import com.example.data.model.SponsoredAd
 import com.example.ui.util.TimeFormatters
+import com.example.ui.util.openInExternalBrowser
 
 @Composable
 fun ProviderBadge(
@@ -522,6 +529,209 @@ fun EditSourceUrlDialog(
                 modifier = Modifier.testTag("confirm_edit_url_button")
             ) {
                 Text("Save & Sync")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun SponsoredAdCard(
+    slotNumber: Int,
+    ad: SponsoredAd?,
+    adFeedUrl: String,
+    isImporting: Boolean,
+    errorMessage: String?,
+    onRetryImport: () -> Unit,
+    onEditAdUrl: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.45f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("ad_slot_card_$slotNumber")
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Campaign,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (ad != null) "SPONSORED • HASHTAGFOLKS.COM" else "AD SLOT #$slotNumber • HASHTAGFOLKS.COM",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+                if (ad != null) {
+                    Text(
+                        text = ad.sponsorName,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (ad != null) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = ad.title,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (ad.description.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = ad.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    if (!ad.imageUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = ad.imageUrl,
+                            fallback = painterResource(R.drawable.img_editorial_fallback),
+                            error = painterResource(R.drawable.img_editorial_fallback),
+                            contentDescription = ad.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(88.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = { openInExternalBrowser(context, ad.targetUrl) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("ad_slot_cta_$slotNumber")
+                ) {
+                    Text(ad.ctaLabel)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            } else {
+                Text(
+                    text = if (isImporting) {
+                        "Importing ad placement from hashtagfolks.com…"
+                    } else {
+                        errorMessage ?: "Ready to import sponsored ads from $adFeedUrl"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = onRetryImport,
+                        enabled = !isImporting,
+                        modifier = Modifier.testTag("ad_slot_retry_$slotNumber")
+                    ) {
+                        if (isImporting) {
+                            CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                        } else {
+                            Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (isImporting) "Importing" else "Import Ad")
+                    }
+                    OutlinedButton(
+                        onClick = onEditAdUrl,
+                        modifier = Modifier.testTag("ad_slot_edit_url_$slotNumber")
+                    ) {
+                        Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Ad URL")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EditAdUrlDialog(
+    currentUrl: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var urlInput by remember(currentUrl) { mutableStateOf(currentUrl) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("HashtagFolks.com Ad Import URL") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Enter a JSON ad manifest (/ads.json, /api/ads), sponsored RSS feed, or hashtagfolks.com page URL.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = urlInput,
+                    onValueChange = { urlInput = it },
+                    label = { Text("Ad Feed URL") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("edit_ad_url_input")
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (urlInput.isNotBlank()) onConfirm(urlInput.trim())
+                },
+                modifier = Modifier.testTag("confirm_edit_ad_url_button")
+            ) {
+                Text("Import & Save")
             }
         },
         dismissButton = {

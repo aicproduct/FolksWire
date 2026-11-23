@@ -1,5 +1,7 @@
 package com.example.data.remote
 
+import com.example.data.remote.dto.AdFeedResponseDto
+import com.example.data.remote.dto.AdSlotDto
 import com.example.data.remote.dto.JsonFeedDto
 import com.example.data.remote.dto.WordPressPostDto
 import com.squareup.moshi.Moshi
@@ -31,6 +33,12 @@ interface NewsFeedApiService {
 
     @GET
     suspend fun fetchJsonFeed(@Url url: String): Response<JsonFeedDto>
+
+    @GET
+    suspend fun fetchAdFeedObject(@Url url: String): Response<AdFeedResponseDto>
+
+    @GET
+    suspend fun fetchAdFeedArray(@Url url: String): Response<List<AdSlotDto>>
 
     companion object {
         const val WIRED_BASE_URL = "https://www.wired.com/"

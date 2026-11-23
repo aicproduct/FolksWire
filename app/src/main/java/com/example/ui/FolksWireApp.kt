@@ -200,6 +200,8 @@ fun FolksWireApp(
                                 onRefreshAll = { newsViewModel.refreshAll() },
                                 onRefreshSource = { newsViewModel.refreshSource(it) },
                                 onUpdateSourceUrl = { id, url -> newsViewModel.updateSourceUrl(id, url) },
+                                onRefreshAds = { newsViewModel.refreshAds() },
+                                onUpdateAdFeedUrl = { newsViewModel.updateAdFeedUrl(it) },
                                 onSelectProvider = { newsViewModel.setProviderFilter(it) },
                                 onSelectCategory = { newsViewModel.setCategoryFilter(it) },
                                 onSelectHashtag = { newsViewModel.setHashtagFilter(it) },
@@ -236,12 +238,17 @@ fun FolksWireApp(
                         composable(FolksWireRoutes.SOURCES) {
                             SourcesScreen(
                                 sources = uiState.sources,
+                                importedAds = uiState.importedAds,
+                                adImportStatus = uiState.adImportStatus,
                                 preferences = uiState.preferences,
                                 onToggleSource = { id, enabled -> newsViewModel.setSourceEnabled(id, enabled) },
                                 onRefreshSource = { newsViewModel.refreshSource(it) },
                                 onUpdateSourceUrl = { id, url -> newsViewModel.updateSourceUrl(id, url) },
                                 onAddCustomSource = { name, url, cat -> newsViewModel.addCustomSource(name, url, cat) },
                                 onDeleteCustomSource = { newsViewModel.deleteCustomSource(it) },
+                                onToggleAdsEnabled = { newsViewModel.setAdsEnabled(it) },
+                                onRefreshAds = { newsViewModel.refreshAds() },
+                                onUpdateAdFeedUrl = { newsViewModel.updateAdFeedUrl(it) },
                                 onSetThemeMode = { newsViewModel.setThemeMode(it) },
                                 onSetFontScale = { newsViewModel.setFontScale(it) },
                                 onClearCache = { newsViewModel.clearCachedArticles() }

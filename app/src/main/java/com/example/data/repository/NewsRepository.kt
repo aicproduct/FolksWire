@@ -8,22 +8,28 @@ import com.example.data.local.UserPreferences
 import com.example.data.model.FeedSource
 import com.example.data.model.NewsArticle
 import com.example.data.model.ProviderGroup
+import com.example.data.model.SponsoredAd
+import com.example.data.remote.AdFetchResult
+import com.example.data.remote.AdFetcher
 import com.example.data.remote.FeedFetchResult
 import com.example.data.remote.FeedFetcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import java.util.UUID
 
 class NewsRepository(
     private val newsDao: NewsDao,
     private val feedFetcher: FeedFetcher,
-    private val preferences: ReaderPreferences
+    private val preferences: ReaderPreferences,
+    private val adFetcher: AdFetcher = AdFetcher()
 ) {
     val enabledArticles: Flow<List<NewsArticle>> = newsDao.observeEnabledArticles()
     val bookmarks: Flow<List<NewsArticle>> = newsDao.observeBookmarks()
     val sources: Flow<List<FeedSource>> = newsDao.observeSources()
+    val sponsoredAds: Flow<List<SponsoredAd>> = newsDao.observeSponsoredAds()
     val cachedArticleCount: Flow<Int> = newsDao.observeTotalCachedCount()
     val userPreferences: Flow<UserPreferences> = preferences.preferencesFlow
 
@@ -192,6 +198,27 @@ class NewsRepository(
     suspend fun setThemeMode(mode: ThemeMode) = preferences.setThemeMode(mode)
 
     suspend fun setFontScale(scale: ReaderFontScale) = preferences.setFontScale(scale)
+
+    suspend fun setAdsEnabled(enabled: Boolean) = preferences.setAdsEnabled(enabled)
+
+    suspend fun setAdFeedUrl(url: String): AdFetchResult {
+        val normalized = normalizeUrl(url).ifBlank { UserPreferences.DEFAULT_AD_FEED_URL }
+        preferences.setAdFeedUrl(normalized)
+        return refreshHashtagFolksAds(normalized)
+    }
+
+    suspend fun refreshHashtagFolksAds(overrideUrl: String? = null): AdFetchResult {
+        val prefs = userPreferences.first()
+        if (!prefs.adsEnabled) {
+            return AdFetchResult.Success(emptyList(), prefs.adFeedUrl)
+        }
+        val targetUrl = overrideUrl ?: prefs.adFeedUrl
+        val result = adFetcher.fetchAds(targetUrl)
+        if (result is AdFetchResult.Success) {
+            newsDao.replaceSponsoredAds(result.ads)
+        }
+        return result
+    }
 
     private fun normalizeUrl(raw: String): String {
         val trimmed = raw.trim()

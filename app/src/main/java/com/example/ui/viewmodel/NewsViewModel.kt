@@ -12,6 +12,9 @@ import com.example.data.local.UserPreferences
 import com.example.data.model.FeedSource
 import com.example.data.model.NewsArticle
 import com.example.data.model.ProviderGroup
+import com.example.data.model.SponsoredAd
+import com.example.data.remote.AdFetchResult
+import com.example.data.remote.AdFetcher
 import com.example.data.remote.FeedFetcher
 import com.example.data.remote.NewsFeedApiService
 import com.example.data.repository.NewsRepository
@@ -50,9 +53,40 @@ data class FeedFilterState(
     val isSearchActive: Boolean = false
 )
 
+sealed interface FeedListItem {
+    val itemKey: String
+
+    data class HeroPost(val article: NewsArticle) : FeedListItem {
+        override val itemKey: String = "hero_${article.id}"
+    }
+
+    data class PostItem(val article: NewsArticle) : FeedListItem {
+        override val itemKey: String = "post_${article.id}"
+    }
+
+    data class AdSlot(
+        val slotNumber: Int,
+        val ad: SponsoredAd?,
+        val adFeedUrl: String,
+        val isImporting: Boolean,
+        val errorMessage: String?
+    ) : FeedListItem {
+        override val itemKey: String = "ad_slot_${slotNumber}_${ad?.id ?: "empty"}"
+    }
+}
+
+data class AdImportStatus(
+    val isImporting: Boolean = false,
+    val lastError: String? = null,
+    val lastResolvedUrl: String? = null
+)
+
 data class FolksWireUiState(
     val loadState: FeedLoadState = FeedLoadState.Loading,
     val filteredArticles: List<NewsArticle> = emptyList(),
+    val feedItems: List<FeedListItem> = emptyList(),
+    val importedAds: List<SponsoredAd> = emptyList(),
+    val adImportStatus: AdImportStatus = AdImportStatus(),
     val bookmarks: List<NewsArticle> = emptyList(),
     val sources: List<FeedSource> = emptyList(),
     val failingEnabledSources: List<FeedSource> = emptyList(),
@@ -74,6 +108,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     private val refreshingState = MutableStateFlow(false)
     private val initialSyncDoneState = MutableStateFlow(false)
     private val isOnlineState = MutableStateFlow(true)
+    private val adImportStatusState = MutableStateFlow(AdImportStatus())
 
     init {
         val db = AppDatabase.getInstance(application)
@@ -83,7 +118,8 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         repository = NewsRepository(
             newsDao = db.newsDao(),
             feedFetcher = FeedFetcher(apiService),
-            preferences = prefs
+            preferences = prefs,
+            adFetcher = AdFetcher(apiService)
         )
         viewModelScope.launch {
             repository.ensureDefaultSources()
@@ -105,20 +141,30 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         val isRefreshing: Boolean,
         val initialSyncDone: Boolean,
         val isOffline: Boolean,
-        val cachedCount: Int
+        val cachedCount: Int,
+        val ads: List<SponsoredAd>,
+        val adImportStatus: AdImportStatus
     )
+
+    private val adStateFlow = combine(
+        repository.sponsoredAds,
+        adImportStatusState
+    ) { ads, status -> ads to status }
 
     private val syncMetaFlow = combine(
         refreshingState,
         initialSyncDoneState,
         isOnlineState,
-        repository.cachedArticleCount
-    ) { refreshing, done, online, cachedCount ->
+        repository.cachedArticleCount,
+        adStateFlow
+    ) { refreshing, done, online, cachedCount, adPair ->
         SyncMeta(
             isRefreshing = refreshing,
             initialSyncDone = done,
             isOffline = !online,
-            cachedCount = cachedCount
+            cachedCount = cachedCount,
+            ads = adPair.first,
+            adImportStatus = adPair.second
         )
     }
 
@@ -191,9 +237,20 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
             hasActiveFilter = filter.category != null || filter.hashtag != null || query.isNotEmpty()
         )
 
+        val feedItems = buildInterleavedFeedItems(
+            articles = filtered,
+            importedAds = syncMeta.ads,
+            adsEnabled = prefs.adsEnabled,
+            adFeedUrl = prefs.adFeedUrl,
+            adStatus = syncMeta.adImportStatus
+        )
+
         FolksWireUiState(
             loadState = loadState,
             filteredArticles = filtered,
+            feedItems = feedItems,
+            importedAds = syncMeta.ads,
+            adImportStatus = syncMeta.adImportStatus,
             bookmarks = bookmarks,
             sources = sources,
             failingEnabledSources = failingSources,
@@ -228,9 +285,65 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
             refreshingState.value = true
             try {
                 repository.refreshAllEnabledSources()
+                refreshHashtagFolksAdsInternal()
             } finally {
                 refreshingState.value = false
                 initialSyncDoneState.value = true
+            }
+        }
+    }
+
+    fun refreshAds() {
+        viewModelScope.launch {
+            refreshHashtagFolksAdsInternal()
+        }
+    }
+
+    fun setAdsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setAdsEnabled(enabled)
+            if (enabled) {
+                refreshHashtagFolksAdsInternal()
+            }
+        }
+    }
+
+    fun updateAdFeedUrl(url: String) {
+        viewModelScope.launch {
+            adImportStatusState.value = adImportStatusState.value.copy(isImporting = true, lastError = null)
+            when (val res = repository.setAdFeedUrl(url)) {
+                is AdFetchResult.Success -> {
+                    adImportStatusState.value = AdImportStatus(
+                        isImporting = false,
+                        lastError = null,
+                        lastResolvedUrl = res.resolvedUrl
+                    )
+                }
+                is AdFetchResult.Failure -> {
+                    adImportStatusState.value = AdImportStatus(
+                        isImporting = false,
+                        lastError = res.message
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun refreshHashtagFolksAdsInternal() {
+        adImportStatusState.value = adImportStatusState.value.copy(isImporting = true, lastError = null)
+        when (val res = repository.refreshHashtagFolksAds()) {
+            is AdFetchResult.Success -> {
+                adImportStatusState.value = AdImportStatus(
+                    isImporting = false,
+                    lastError = null,
+                    lastResolvedUrl = res.resolvedUrl
+                )
+            }
+            is AdFetchResult.Failure -> {
+                adImportStatusState.value = AdImportStatus(
+                    isImporting = false,
+                    lastError = res.message
+                )
             }
         }
     }
@@ -387,6 +500,82 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                 articles = filteredArticles,
                 isRefreshing = isRefreshing
             )
+        }
+
+        fun buildInterleavedFeedItems(
+            articles: List<NewsArticle>,
+            importedAds: List<SponsoredAd>,
+            adsEnabled: Boolean,
+            adFeedUrl: String,
+            adStatus: AdImportStatus
+        ): List<FeedListItem> {
+            if (articles.isEmpty()) return emptyList()
+            val items = mutableListOf<FeedListItem>()
+            items.add(FeedListItem.HeroPost(articles.first()))
+
+            val rest = articles.drop(1)
+            if (!adsEnabled) {
+                rest.forEach { items.add(FeedListItem.PostItem(it)) }
+                return items
+            }
+
+            if (rest.isEmpty()) {
+                items.add(
+                    FeedListItem.AdSlot(
+                        slotNumber = 1,
+                        ad = importedAds.firstOrNull(),
+                        adFeedUrl = adFeedUrl,
+                        isImporting = adStatus.isImporting,
+                        errorMessage = adStatus.lastError
+                    )
+                )
+                return items
+            }
+
+            var slotCounter = 0
+            rest.forEachIndexed { index, article ->
+                items.add(FeedListItem.PostItem(article))
+                val shouldInsertSlot = (index == 1) || (index > 1 && (index - 1) % 4 == 0)
+                if (shouldInsertSlot) {
+                    if (importedAds.isNotEmpty()) {
+                        val ad = importedAds[slotCounter % importedAds.size]
+                        slotCounter++
+                        items.add(
+                            FeedListItem.AdSlot(
+                                slotNumber = slotCounter,
+                                ad = ad,
+                                adFeedUrl = adFeedUrl,
+                                isImporting = adStatus.isImporting,
+                                errorMessage = adStatus.lastError
+                            )
+                        )
+                    } else if (slotCounter == 0) {
+                        slotCounter++
+                        items.add(
+                            FeedListItem.AdSlot(
+                                slotNumber = slotCounter,
+                                ad = null,
+                                adFeedUrl = adFeedUrl,
+                                isImporting = adStatus.isImporting,
+                                errorMessage = adStatus.lastError
+                            )
+                        )
+                    }
+                }
+            }
+
+            if (slotCounter == 0) {
+                items.add(
+                    FeedListItem.AdSlot(
+                        slotNumber = 1,
+                        ad = importedAds.firstOrNull(),
+                        adFeedUrl = adFeedUrl,
+                        isImporting = adStatus.isImporting,
+                        errorMessage = adStatus.lastError
+                    )
+                )
+            }
+            return items
         }
     }
 }

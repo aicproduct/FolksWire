@@ -65,11 +65,14 @@ import com.example.R
 import com.example.data.model.FeedSource
 import com.example.data.model.NewsArticle
 import com.example.ui.components.CompactArticleCard
+import com.example.ui.components.EditAdUrlDialog
 import com.example.ui.components.EditSourceUrlDialog
 import com.example.ui.components.HashtagChip
 import com.example.ui.components.HeroArticleCard
 import com.example.ui.components.SourceStatusBanner
+import com.example.ui.components.SponsoredAdCard
 import com.example.ui.util.shareArticle
+import com.example.ui.viewmodel.FeedListItem
 import com.example.ui.viewmodel.FeedLoadState
 import com.example.ui.viewmodel.FolksWireUiState
 import com.example.ui.viewmodel.ProviderFilter
@@ -82,6 +85,8 @@ fun FeedScreen(
     onRefreshAll: () -> Unit,
     onRefreshSource: (String) -> Unit,
     onUpdateSourceUrl: (String, String) -> Unit,
+    onRefreshAds: () -> Unit,
+    onUpdateAdFeedUrl: (String) -> Unit,
     onSelectProvider: (ProviderFilter) -> Unit,
     onSelectCategory: (String?) -> Unit,
     onSelectHashtag: (String?) -> Unit,
@@ -94,6 +99,7 @@ fun FeedScreen(
 ) {
     val context = LocalContext.current
     var editingSource by remember { mutableStateOf<FeedSource?>(null) }
+    var showEditAdUrlDialog by remember { mutableStateOf(false) }
 
     editingSource?.let { src ->
         EditSourceUrlDialog(
@@ -102,6 +108,17 @@ fun FeedScreen(
             onConfirm = { newUrl ->
                 onUpdateSourceUrl(src.id, newUrl)
                 editingSource = null
+            }
+        )
+    }
+
+    if (showEditAdUrlDialog) {
+        EditAdUrlDialog(
+            currentUrl = uiState.preferences.adFeedUrl,
+            onDismiss = { showEditAdUrlDialog = false },
+            onConfirm = { newUrl ->
+                onUpdateAdFeedUrl(newUrl)
+                showEditAdUrlDialog = false
             }
         )
     }
@@ -378,8 +395,7 @@ fun FeedScreen(
                                 }
                             }
                         } else if (isWide) {
-                            val hero = articles.firstOrNull()
-                            val rest = if (articles.size > 1) articles.drop(1) else emptyList()
+                            val feedItems = uiState.feedItems
                             LazyVerticalGrid(
                                 columns = GridCells.Fixed(2),
                                 contentPadding = PaddingValues(16.dp),
@@ -398,30 +414,51 @@ fun FeedScreen(
                                         )
                                     }
                                 }
-                                if (hero != null) {
-                                    item(span = { GridItemSpan(2) }, key = "hero_${hero.id}") {
-                                        HeroArticleCard(
-                                            article = hero,
-                                            onClick = { onArticleClick(hero) },
-                                            onToggleBookmark = { onToggleBookmark(hero) },
-                                            onShare = { shareArticle(context, hero) },
-                                            onHashtagClick = { onSelectHashtag(it) }
-                                        )
+                                items(
+                                    items = feedItems,
+                                    key = { it.itemKey },
+                                    span = { item ->
+                                        when (item) {
+                                            is FeedListItem.HeroPost, is FeedListItem.AdSlot -> GridItemSpan(2)
+                                            is FeedListItem.PostItem -> GridItemSpan(1)
+                                        }
                                     }
-                                }
-                                items(rest, key = { it.id }) { article ->
-                                    CompactArticleCard(
-                                        article = article,
-                                        onClick = { onArticleClick(article) },
-                                        onToggleBookmark = { onToggleBookmark(article) },
-                                        onShare = { shareArticle(context, article) },
-                                        onHashtagClick = { onSelectHashtag(it) }
-                                    )
+                                ) { item ->
+                                    when (item) {
+                                        is FeedListItem.HeroPost -> {
+                                            HeroArticleCard(
+                                                article = item.article,
+                                                onClick = { onArticleClick(item.article) },
+                                                onToggleBookmark = { onToggleBookmark(item.article) },
+                                                onShare = { shareArticle(context, item.article) },
+                                                onHashtagClick = { onSelectHashtag(it) }
+                                            )
+                                        }
+                                        is FeedListItem.PostItem -> {
+                                            CompactArticleCard(
+                                                article = item.article,
+                                                onClick = { onArticleClick(item.article) },
+                                                onToggleBookmark = { onToggleBookmark(item.article) },
+                                                onShare = { shareArticle(context, item.article) },
+                                                onHashtagClick = { onSelectHashtag(it) }
+                                            )
+                                        }
+                                        is FeedListItem.AdSlot -> {
+                                            SponsoredAdCard(
+                                                slotNumber = item.slotNumber,
+                                                ad = item.ad,
+                                                adFeedUrl = item.adFeedUrl,
+                                                isImporting = item.isImporting,
+                                                errorMessage = item.errorMessage,
+                                                onRetryImport = onRefreshAds,
+                                                onEditAdUrl = { showEditAdUrlDialog = true }
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         } else {
-                            val hero = articles.firstOrNull()
-                            val rest = if (articles.size > 1) articles.drop(1) else emptyList()
+                            val feedItems = uiState.feedItems
                             LazyColumn(
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -436,25 +473,38 @@ fun FeedScreen(
                                         )
                                     }
                                 }
-                                if (hero != null) {
-                                    item(key = "hero_${hero.id}") {
-                                        HeroArticleCard(
-                                            article = hero,
-                                            onClick = { onArticleClick(hero) },
-                                            onToggleBookmark = { onToggleBookmark(hero) },
-                                            onShare = { shareArticle(context, hero) },
-                                            onHashtagClick = { onSelectHashtag(it) }
-                                        )
+                                items(feedItems, key = { it.itemKey }) { item ->
+                                    when (item) {
+                                        is FeedListItem.HeroPost -> {
+                                            HeroArticleCard(
+                                                article = item.article,
+                                                onClick = { onArticleClick(item.article) },
+                                                onToggleBookmark = { onToggleBookmark(item.article) },
+                                                onShare = { shareArticle(context, item.article) },
+                                                onHashtagClick = { onSelectHashtag(it) }
+                                            )
+                                        }
+                                        is FeedListItem.PostItem -> {
+                                            CompactArticleCard(
+                                                article = item.article,
+                                                onClick = { onArticleClick(item.article) },
+                                                onToggleBookmark = { onToggleBookmark(item.article) },
+                                                onShare = { shareArticle(context, item.article) },
+                                                onHashtagClick = { onSelectHashtag(it) }
+                                            )
+                                        }
+                                        is FeedListItem.AdSlot -> {
+                                            SponsoredAdCard(
+                                                slotNumber = item.slotNumber,
+                                                ad = item.ad,
+                                                adFeedUrl = item.adFeedUrl,
+                                                isImporting = item.isImporting,
+                                                errorMessage = item.errorMessage,
+                                                onRetryImport = onRefreshAds,
+                                                onEditAdUrl = { showEditAdUrlDialog = true }
+                                            )
+                                        }
                                     }
-                                }
-                                items(rest, key = { it.id }) { article ->
-                                    CompactArticleCard(
-                                        article = article,
-                                        onClick = { onArticleClick(article) },
-                                        onToggleBookmark = { onToggleBookmark(article) },
-                                        onShare = { shareArticle(context, article) },
-                                        onHashtagClick = { onSelectHashtag(it) }
-                                    )
                                 }
                             }
                         }
